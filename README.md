@@ -1,7 +1,7 @@
 # 2HC2021
 
-Hitachi Hokudai Lab. & Hokkaido University Contest 2021　A問題のPythonでの入出力部分等を公開しています。
+Hitachi Hokudai Lab. & Hokkaido University Contest 2021 A問題のPythonでの入出力部分等を公開しています。
 
 改変や再配布は自由ですが、使用に伴ういかなる損害や得点の減少、処理時間の増加についても責任は負いません。
 
-もしプログラムの誤りや綴り間違いについて気づかれたら教えて頂けたら幸いです。
+もしプログラムの誤りや綴り間違いなどにお気づきになった場合は教えて頂けたら幸いです。
