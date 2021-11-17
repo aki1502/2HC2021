@@ -466,7 +466,7 @@ class RB(AbsAsset):
     def __new__(cls, variety_id: int, amount: int) -> RB:
         s = AbsAsset.__new__(cls)
         s.variety_id = variety_id
-        s.unit_Cap, s.C_init = cls.variety[variety_id - 1]
+        *_, s.unit_Cap, s.C_init = cls.variety[variety_id - 1]
         s.amount = amount
         return s
 
@@ -833,7 +833,7 @@ def main(
     order_freq   : OrderFrequency,
     shelters     : Shelters,
 ) -> None:
-    ### write logic here ###
+    ### write logic here ########
     # grids = [NanoGrid(graph.getvertex(1), 0, PV(1, 1), FE(1), RB(1, 1), EVC(1))]
     # evs = [Vehicle(1, graph.getvertex(1), 0, graph)]
     # ans = Answer(grids, evs)
@@ -859,11 +859,9 @@ if __name__ == "__main__":
         demands[d, i] = demand
     else:
         del demand
-    
     radiation = Radiation(circumstances, graph)
     for d, v in product(circumstances.days(), graph.vertices):
         radiation[d, v] = io_1("radiation", d, v.id)
-    
     assets = AssetCatalog(io_1("asset"))
     for i in range_1idx(assets.N_PV):
         PV.add_variety(*io_1("asset", "PV", i))
