@@ -292,13 +292,17 @@ class Demands:
 
 
 class Demand:
+    graph: ClassVar[Graph]
+
     def __init__(self, day: Day, id: int, info: list[list[int]]) -> None:
         self.day = day
         self.id  = id
         (
-            (self.x, self.sigma2),
+            (x, self.sigma2),
             self.daily_demands
         ) = info
+
+        self.vertex = graph.getvertex(x)
 
     def __getitem__(self, key: Interval) -> int:
         return self.daily_demands[key - 1]
@@ -493,6 +497,7 @@ class EVC(AbsAsset):
 
 class Vehicle(AbsAsset):
     variety: ClassVar[list[tuple[int, int, int, int, int, int]]] = []
+    graph: ClassVar[Graph]
 
     variety_id: int
     Cap_charge: int; Cap_order: int
@@ -502,7 +507,7 @@ class Vehicle(AbsAsset):
     vertex: Vertex; Chg_init: int
     Chg_current: int; pos: tuple[Vertex, Vertex, int]
 
-    def __new__(cls, variety_id: int, v: Vertex, chg: int, g: Graph) -> Vehicle:
+    def __new__(cls, variety_id: int, v: Vertex, chg: int) -> Vehicle:
         s = AbsAsset.__new__(cls)
         s.variety_id = variety_id
         (
@@ -510,7 +515,6 @@ class Vehicle(AbsAsset):
             s.P_charge, s.P_discharge, s.C_init, s.Delta_move
         ) = cls.variety[variety_id]
         
-        s.graph = g
         s.vertex, s.Chg_init = v, chg
         return s
 
@@ -850,6 +854,8 @@ if __name__ == "__main__":
     circumstances = Circumstances(io_1("budget"), io_1("temporal"))
     
     graph = Graph(io_1("graph"))
+    Vehicle.graph = graph
+    Demand.graph = graph
     
     score_calc = ScoreCalculator(io_1("score"), circumstances, graph)
     
