@@ -218,17 +218,20 @@ class Graph:
         self.e: int; self.v: int
         vinfo: list[list[int]]; einfo: list[list[int]]
         ((self.v, self.e), vinfo, einfo) = veinfo
+
         self._value: nx.Graph[Vertex] = nx.Graph()
         self.vertices = vs = [
             Vertex(i, Position(x, y), p, A, l)
             for i, (x, y, p, A, l) in enumerate(vinfo, 1)
         ]
-        self._edges = es = [
+        self.edges = es = [
             Edge(vs[u - 1], vs[v - 1], d)
             for u, v, d in einfo
         ]
         self._value.add_nodes_from(vs)
         self._value.add_weighted_edges_from(es)
+
+        self.scale = max(Position.euclidean(e.u.pos, e.v.pos)/e.weight for e in es)
 
     def getvertex(self, i: int) -> Vertex:
         return self.vertices[i - 1]
@@ -238,7 +241,7 @@ class Graph:
 
     def distance(self, u: Vertex, v: Vertex) -> int:
         def euclidean(a: Vertex, b: Vertex):
-            return Position.euclidean(a.pos, b.pos)
+            return self.scale * Position.euclidean(a.pos, b.pos)
         value: int = nx.astar_path_length(self._value, u, v, euclidean)
         return value
 

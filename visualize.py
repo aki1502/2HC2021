@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
 
-from A import (Circumstances, Day, Demand, Demands, Graph, Shelters, io_1,
+from A import (Circumstances, Day, Demand, Demands, Graph, Position, Shelters, io_1,
                range_1idx)
 
 
@@ -26,6 +26,7 @@ if __name__ == "__main__":
         demands[d, i] = demand
     else:
         del demand
+    
     
     shelters = Shelters(io_1("shelter"), circumstances, graph)
 
