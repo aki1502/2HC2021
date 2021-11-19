@@ -2,10 +2,13 @@ from __future__ import annotations
 
 from collections import defaultdict
 from itertools import product
-from typing import Any, Callable, ClassVar, Iterator, List, Literal, NamedTuple, Tuple, Union, overload
+from typing import (Any, Callable, ClassVar, Iterator, List, Literal,
+                    NamedTuple, Tuple, Union, overload)
 
 import networkx as nx
 import numpy as np
+
+
 
 
 ## self-developed utility classes and functions
@@ -67,6 +70,17 @@ class IO:
 
 
 
+class InstanceCacheMixIn:
+    instances: ClassVar[defaultdict[type, dict[Any, InstanceCacheMixIn]]] = defaultdict(dict)
+    def __new__(cls: type[InstanceCacheMixIn], *key: Any) -> InstanceCacheMixIn:
+        value = cls.instances[cls].setdefault(
+            key,
+            super(InstanceCacheMixIn, cls).__new__(cls, *key)
+        )
+        return value
+
+
+
 def range_1idx(length: int) -> range:
     return range(1, length + 1)
 
@@ -109,9 +123,9 @@ class Circumstances:
             yield Step(i)
 
 
-class Day(int): ...
-class Interval(int): ...
-class Step(int): ...
+class Day(int, InstanceCacheMixIn): ...
+class Interval(int, InstanceCacheMixIn): ...
+class Step(int, InstanceCacheMixIn): ...
 
 
 
@@ -293,6 +307,7 @@ class Demands:
 
 class Demand:
     graph: ClassVar[Graph]
+    _empty: Demand | None = None
 
     def __init__(self, day: Day, id: int, info: list[list[int]]) -> None:
         self.day = day
@@ -302,14 +317,16 @@ class Demand:
             self.daily_demands
         ) = info
 
-        self.vertex = graph.getvertex(x)
+        self.vertex = self.graph.getvertex(x)
 
     def __getitem__(self, key: Interval) -> int:
         return self.daily_demands[key - 1]
 
     @classmethod
     def empty(cls) -> Demand:
-        return cls(Day(0), 0, [[0, 0], []])
+        if cls._empty is None:
+            cls._empty = cls(Day(0), 0, [[0, 0], []])
+        return cls._empty
 
 
 
@@ -591,9 +608,9 @@ class Shelters:
         self.circumstances = c
         self.graph = g
         self.N, xp, self.D = info
-        self.value = [Shelter(g.getvertex(x), p) for x, p in xp]
+        self._value = [Shelter(g.getvertex(x), p) for x, p in xp]
         self.vertex: defaultdict[Vertex, list[Shelter]] = defaultdict(list)
-        for v in self.value:
+        for v in self._value:
             self.vertex[v.vertex].append(v)
 
     def predicted_demand(self, v: Vertex, i: Interval) -> int:
@@ -839,7 +856,7 @@ def main(
 ) -> None:
     ### write logic here ########
     # grids = [NanoGrid(graph.getvertex(1), 0, PV(1, 1), FE(1), RB(1, 1), EVC(1))]
-    # evs = [Vehicle(1, graph.getvertex(1), 0, graph)]
+    # evs = [Vehicle(1, graph.getvertex(1), 0)]
     # ans = Answer(grids, evs)
     # io_2(ans, command="submit", opt=0)
     #############################
@@ -854,8 +871,7 @@ if __name__ == "__main__":
     circumstances = Circumstances(io_1("budget"), io_1("temporal"))
     
     graph = Graph(io_1("graph"))
-    Vehicle.graph = graph
-    Demand.graph = graph
+    Vehicle.graph = Demand.graph = graph
     
     score_calc = ScoreCalculator(io_1("score"), circumstances, graph)
     
@@ -865,6 +881,7 @@ if __name__ == "__main__":
         demands[d, i] = demand
     else:
         del demand
+    
     radiation = Radiation(circumstances, graph)
     for d, v in product(circumstances.days(), graph.vertices):
         radiation[d, v] = io_1("radiation", d, v.id)
