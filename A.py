@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from itertools import product
+from statistics import mean
 from typing import (Any, Callable, ClassVar, Iterator, List, Literal,
                     NamedTuple, Tuple, Union, overload)
 
@@ -278,9 +279,11 @@ class Demands:
             ] for _ in range(c.number_of_days)
         ]
 
+    @overload
+    def __getitem__(self, key: Day | tuple[Day]) -> dict[int, Demand]: ...
 
     @overload
-    def __getitem__(self, key: Day | tuple[Day]) -> list[Demand]: ...
+    def __getitem__(self, key: int | tuple[int]) -> dict[int, Demand]: ...
 
     @overload
     def __getitem__(self, key: tuple[Day, int]) -> Demand: ...
@@ -288,14 +291,19 @@ class Demands:
     @overload
     def __getitem__(self, key: tuple[Day, int, Interval]) -> int: ...
 
-    def __getitem__(self, key: Day | tuple[Day] | tuple[Day, int] | tuple[Day, int, Interval]):
+    def __getitem__(self, key: Day | int | tuple[Day | int] | tuple[Day, int] | tuple[Day, int, Interval]):
         if isinstance(key, Day):
-            return self._value[key - 1]
+            return {i: v for i, v in enumerate(self._value[key - 1], 1)}
+        elif isinstance(key, int):
+            return {day: self._value[day - 1][key - 1] for day in self.circumstances.days()}
         else:
             l = len(key)
             if   l == 1:
-                dl = self._value[key[0] - 1]
-                return dl
+                k = key[0]
+                if isinstance(k, Day):
+                    return {i: v for i, v in enumerate(self._value[k - 1], 1)}
+                else:
+                    return {day: self._value[day - 1][k - 1] for day in self.circumstances.days()}
             elif l == 2:
                 d = self._value[key[0] - 1][key[1] - 1]
                 return d
@@ -317,6 +325,7 @@ class Demands:
 
 
 class Demand:
+    circumstances: ClassVar[Circumstances]
     graph: ClassVar[Graph]
     _revision: ClassVar[list[list[float]]] = [
         [1.8241241314072116, 1.882833150107928,  1.9391623863209513, 1.99337826079715,   2.0457011604472948, 2.096315802221852,  2.145378792894321,  2.193024254736208,  2.239368086819472,  2.2845112442856284, 2.328542297893525,  2.371539457440204,  2.41357218989912,   2.454702527070049,  2.4949861324527074, 2.5344731793163824, 2.573209079201291,  2.611235090815617,  2.648588832456274,  2.6853047159815526, 2.7214143165174844],
@@ -369,6 +378,10 @@ class Demand:
                f"Vertex: {self.vertex.id}, "\
                f"sigma2: {self.sigma2}, "\
                f"{self.daily_demands})"
+
+    @property
+    def average(self) -> float:
+        return mean(self[i] for i in self.circumstances.intervals())
 
     @classmethod
     def empty(cls) -> Demand:
@@ -918,6 +931,7 @@ if __name__ == "__main__":
     
     graph = Graph(io_1("graph"))
     Vehicle.graph = Demand.graph = graph
+    Demand.circumstances = circumstances
     
     score_calc = ScoreCalculator(io_1("score"), circumstances, graph)
     

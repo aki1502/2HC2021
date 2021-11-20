@@ -18,7 +18,7 @@ def main(
 ) -> None:
     nx.draw(graph._value, pos={v: v.pos._value for v in graph.vertices}, node_size=2)
 
-    demandpoints = np.array([d.vertex.pos._value for d in demands[Day(1)]])
+    demandpoints = np.array([d.vertex.pos._value for d in demands[Day(1)].values()])
     shelterpoints = np.array([s.vertex.pos._value for s in shelters._value])
 
     plt.scatter(*demandpoints.T, c="green", zorder=2)
