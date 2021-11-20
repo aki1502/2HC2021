@@ -64,9 +64,9 @@ class IO:
 
 
     @staticmethod
-    def errprint(*i: Any) -> None:
+    def errprint(*i: Any, **kwargs: Any) -> None:
         from sys import stderr
-        print(*i, file=stderr)
+        print(*i, **kwargs, file=stderr)
 
 
 
@@ -208,6 +208,9 @@ class Position:
     def __init__(self, x: int, y: int) -> None:
         self._value = np.array([x, y], dtype=np.int64)
 
+    def __repr__(self) -> str:
+        return f"Position{tuple(self._value)}"
+
     @staticmethod
     def euclidean(p0: Position, p1: Position) -> float:
         return np.linalg.norm(p0._value - p1._value)
@@ -286,7 +289,7 @@ class Demands:
     def __getitem__(self, key: tuple[Day, int, Interval]) -> int: ...
 
     def __getitem__(self, key: Day | tuple[Day] | tuple[Day, int] | tuple[Day, int, Interval]):
-        if isinstance(key, int):
+        if isinstance(key, Day):
             return self._value[key - 1]
         else:
             l = len(key)
@@ -308,6 +311,11 @@ class Demands:
         self._value[day - 1][n - 1] = value
 
 
+    @property
+    def vertices(self) -> list[Vertex]:
+        return [d.vertex for d in self._value[Day(0)]]
+
+
 class Demand:
     graph: ClassVar[Graph]
     _empty: Demand | None = None
@@ -324,6 +332,12 @@ class Demand:
 
     def __getitem__(self, key: Interval) -> int:
         return self.daily_demands[key - 1]
+
+    def __repr__(self) -> str:
+        return f"Demand(Day: {self.day}, "\
+               f"Vertex: {self.vertex.id}, "\
+               f"sigma2: {self.sigma2}, "\
+               f"{self.daily_demands})"
 
     @classmethod
     def empty(cls) -> Demand:
@@ -612,13 +626,11 @@ class Shelters:
         self.graph = g
         self.N, xp, self.D = info
         self._value = [Shelter(g.getvertex(x), p) for x, p in xp]
-        self.vertex: defaultdict[Vertex, list[Shelter]] = defaultdict(list)
-        for v in self._value:
-            self.vertex[v.vertex].append(v)
+        self.vertices = [g.getvertex(x) for x, _ in xp]
+        self._vtoid = {v:i for v, i in zip(self.vertices, range_1idx(self.N))}
 
     def predicted_demand(self, v: Vertex, i: Interval) -> int:
-        l = [s.pop * self.D[i - 1] // 100 for s in self.vertex[v]]
-        return sum(l)
+        return self._value[self._vtoid[v]].pop * self.D[i - 1] // 100
 
 
 class Shelter(NamedTuple):
