@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from collections import defaultdict
 from itertools import product
+from numbers import Integral
 from statistics import mean
+from time import time
 from typing import (Any, Callable, ClassVar, Iterator, List, Literal,
-                    NamedTuple, Tuple, Union, overload)
+                    NamedTuple, Tuple, Union, cast, overload)
 
 import networkx as nx
 import numpy as np
@@ -82,6 +84,76 @@ class InstanceCacheMixIn:
 
 
 
+class ExecutionTimer:
+    start = time()
+
+    @classmethod
+    def now(cls) -> float:
+        return time() - cls.start
+
+    @classmethod
+    def before(cls, timelimit: float) -> Callable[[], bool]:
+        return lambda: cls.now() < timelimit
+
+
+
+Real = Union[int, float]
+class FibonacciSearch:
+    x_0: int; x_1: int; x_2: int; x_3: int
+    y_1: Real | None = None; y_2: Real | None = None
+    
+    def __init__(
+        self,
+        func: Callable[[int], Real],
+        x_0: int, x_1: int, x_2: int, x_3: int
+    ) -> None:
+        self.x_0, self.x_1, self.x_2, self.x_3 = sorted((x_0, x_1, x_2, x_3))
+        self.func = func
+
+
+    def is_finished(self) -> bool:
+        return self.x_3 - self.x_0 == 3
+
+
+    def success(self) -> None:
+        x_0, x_1, x_2, x_3 = self.x_0, self.x_1, self.x_2, self.x_3
+        y_1 = self.func(x_1) if self.y_1 is None else self.y_1
+        y_2 = self.func(x_2) if self.y_2 is None else self.y_2
+
+        if y_1 < y_2:
+            self.x_0, self.x_1, self.x_2 = x_1, x_2, x_1 - x_2 + x_3
+            self.y_1, self.y_2 = y_2, None
+        else:
+            self.x_1, self.x_2, self.x_3 = x_0 - x_1 + x_2, x_1, x_2
+            self.y_1, self.y_2 = None, y_1
+
+    
+    def find(self, limitter: Callable[[], bool] | None) -> int:
+        limitter = (lambda: True) if limitter is None else limitter
+        while not self.is_finished() and limitter(): self.success()
+        y_1 = self.func(self.x_1) if self.y_1 is None else self.y_1
+        y_2 = self.func(self.x_2) if self.y_2 is None else self.y_2
+
+        return self.x_2 if y_1 < y_2 else self.x_1
+
+    
+    @classmethod
+    def from_infimum(
+        cls,
+        func: Callable[[int], Real],
+        x_0: int=0, x_1: int=1, x_3: int=2
+    ) -> FibonacciSearch:
+        y_1, y_3 = func(x_1), func(x_3)
+        while y_1 < y_3:
+            x_0, x_1, x_3 = x_1, x_3, 2*x_3 - x_0
+            y_1, y_3 = y_3, func(x_3)
+        x_2 = x_3 + x_1 - x_0
+        value = cls(func, x_0, x_1, x_2, x_3)
+        value.y_1 = y_1
+        return value
+
+
+
 def range_1idx(length: int) -> range:
     return range(1, length + 1)
 
@@ -124,9 +196,64 @@ class Circumstances:
             yield Step(i)
 
 
-class Day(int, InstanceCacheMixIn): ...
-class Interval(int, InstanceCacheMixIn): ...
-class Step(int, InstanceCacheMixIn): ...
+class AbstractTime(Integral, InstanceCacheMixIn):
+    _value: int
+    def __init__(self, i: int) -> None:
+        self._value = i
+    def __int__(self) -> int: return self._value
+    def __pow__(self, other: Any, modulo: Any): ...
+    def __rpow__(self, other: Any): ...
+    def __lshift__(self, other: Any): ...
+    def __rlshift__(self, other: Any): ...
+    def __rshift__(self, other: Any): ...
+    def __rrshift__(self, other: Any): ...
+    def __and__(self, other: Any): ...
+    def __rand__(self, other: Any): ...
+    def __xor__(self, other: Any): ...
+    def __rxor__(self, other: Any): ...
+    def __or__(self, other: Any): ...
+    def __ror__(self, other: Any): ...
+    def __invert__(self): ...
+    def __trunc__(self) -> int: return self._value
+    def __floor__(self) -> int: return self._value
+    def __ceil__(self) -> int:  return self._value
+    def __round__(self, ndigits: Any) -> int: return self._value
+    def __floordiv__(self, other: Any) -> int: ...
+    def __rfloordiv__(self, other: Any) -> int: ...
+    def __mod__(self, other: Any): ...
+    def __rmod__(self, other: Any): ...
+    def __lt__(self, other: AbstractTime) -> bool:
+        return self._value < other._value
+    def __le__(self, other: AbstractTime) -> bool:
+        return self._value <= other._value
+    def __gt__(self, other: AbstractTime) -> bool:
+        return self._value > other._value
+    def __ge__(self, other: AbstractTime) -> bool:
+        return self._value >= other._value
+    @overload
+    def __add__(self, other: int) -> int: ...
+    @overload
+    def __add__(self, other: AbstractTime) -> AbstractTime: ...
+    def __add__(self, other: int | AbstractTime):
+        if isinstance(other, AbstractTime):
+            return cast(type(self), self._value + other._value)
+        else:
+            return self._value + other
+    def __radd__(self, other: AbstractTime) -> AbstractTime:
+        return cast(type(self), self._value + other._value)
+    def __neg__(self): ...
+    def __pos__(self): ...
+    def __mul__(self, other: int) -> AbstractTime:
+        return cast(type(self), self._value * other)
+    def __rmul__(self, other: int) -> AbstractTime:
+        return cast(type(self), self._value * other)
+    def __truediv__(self, other: Any): ...
+    def __rtruediv__(self, other: Any): ...
+    def __hash__(self) -> int: return hash(self._value)
+    def __str__(self) -> str: return str(self._value)
+class Day(AbstractTime): ...
+class Interval(AbstractTime): ...
+class Step(AbstractTime): ...
 
 
 
@@ -283,7 +410,7 @@ class Demands:
     def __getitem__(self, key: Day | tuple[Day]) -> dict[int, Demand]: ...
 
     @overload
-    def __getitem__(self, key: int | tuple[int]) -> dict[int, Demand]: ...
+    def __getitem__(self, key: int | tuple[int]) -> dict[Day, Demand]: ...
 
     @overload
     def __getitem__(self, key: tuple[Day, int]) -> Demand: ...
@@ -317,7 +444,6 @@ class Demands:
         day: Day; n: int
         day, n = key
         self._value[day - 1][n - 1] = value
-
 
     @property
     def vertices(self) -> list[Vertex]:
@@ -614,11 +740,20 @@ class Vehicle(AbsAsset):
 
 # Transportation Request
 class OrderFrequency:
-    def __init__(self, c: Circumstances) -> None:
+    _simultaneous_order_expectation_coefficient: float = 0.
+
+    def __init__(self, c: Circumstances, g: Graph) -> None:
         self.circumstance = c
+        self.graph = g
         self._frequency = [
             [0] * c.intervals_per_day for _ in range(c.number_of_days)
         ]
+
+    def simultaneous_order(self, day: Day, interval: Interval) -> float:
+        if self._simultaneous_order_expectation_coefficient == 0.:
+            pass
+            self._simultaneous_order_expectation_coefficient = 0.
+        return self._simultaneous_order_expectation_coefficient * self[day, interval]
 
     @overload
     def __getitem__(self, key: Day) -> list[int]: ...
@@ -793,10 +928,10 @@ def io_1(query: Literal["graph"]) -> tuple[list[int], list[list[int]], list[list
 def io_1(query: Literal["demand"]) -> int: ...
 
 @overload
-def io_1(q: Literal["demand"], u: int, ery: int) -> list[list[int]]: ...
+def io_1(q: Literal["demand"], u: Day, ery: int) -> list[list[int]]: ...
 
 @overload
-def io_1(q: Literal["radiation"], u: int, ery: int) -> list[float]: ...
+def io_1(q: Literal["radiation"], u: Day, ery: int) -> list[float]: ...
 
 @overload
 def io_1(query: Literal["asset"]) -> list[list[int]]: ...
@@ -808,7 +943,7 @@ def io_1(q: Literal["asset"], u: Literal["PV", "FE", "RB", "EVC"], ery: int) -> 
 def io_1(q: Literal["asset"], u: Literal["vehicle"], ery: int) -> list[list[int]]: ...
 
 @overload
-def io_1(q: Literal["order"], uery: int) -> list[int]: ...
+def io_1(q: Literal["order"], uery: Day) -> list[int]: ...
 
 @overload
 def io_1(query: Literal["shelter"]) -> tuple[int, list[list[int]], list[int]]: ...
@@ -958,7 +1093,7 @@ if __name__ == "__main__":
         l0, l1 = io_1("asset", "vehicle", i)
         Vehicle.add_variety(*l0, *l1)
     
-    order_freq = OrderFrequency(circumstances)
+    order_freq = OrderFrequency(circumstances, graph)
     for d in circumstances.days():
         order_freq[d] = io_1("order", d)
     

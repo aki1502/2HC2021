@@ -64,7 +64,7 @@ if __name__ == "__main__":
         l0, l1 = io_1("asset", "vehicle", i)
         Vehicle.add_variety(*l0, *l1)
     
-    order_freq = OrderFrequency(circumstances)
+    order_freq = OrderFrequency(circumstances, graph)
     for d in circumstances.days():
         order_freq[d] = io_1("order", d)
     
