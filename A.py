@@ -63,7 +63,7 @@ class IO:
 
     @staticmethod
     def print(*i: Any) -> None:
-        print(*i)
+        print(*i, flush=True)
 
 
     @staticmethod
@@ -198,8 +198,10 @@ class Circumstances:
 
 class AbstractTime(Integral, InstanceCacheMixIn):
     _value: int
-    def __init__(self, i: int) -> None:
-        self._value = i
+    def __new__(cls, i: int):
+        ins = cast(cls, super().__new__(cls))
+        ins._value = i
+        return ins
     def __int__(self) -> int: return self._value
     def __pow__(self, other: Any, modulo: Any): ...
     def __rpow__(self, other: Any): ...
@@ -213,6 +215,7 @@ class AbstractTime(Integral, InstanceCacheMixIn):
     def __rxor__(self, other: Any): ...
     def __or__(self, other: Any): ...
     def __ror__(self, other: Any): ...
+    def __abs__(self) -> AbstractTime: return self
     def __invert__(self): ...
     def __trunc__(self) -> int: return self._value
     def __floor__(self) -> int: return self._value
@@ -226,6 +229,10 @@ class AbstractTime(Integral, InstanceCacheMixIn):
         return self._value < other._value
     def __le__(self, other: AbstractTime) -> bool:
         return self._value <= other._value
+    def __eq__(self, other: AbstractTime) -> bool:
+        return self._value == other._value
+    def __ne__(self, other: AbstractTime) -> bool:
+        return self._value != other._value
     def __gt__(self, other: AbstractTime) -> bool:
         return self._value > other._value
     def __ge__(self, other: AbstractTime) -> bool:
@@ -639,7 +646,7 @@ class PV(AbsAsset):
     
     def __new__(cls, variety_id: int, amount: int) -> PV:
         s = AbsAsset.__new__(cls)
-        s.variety_id = variety_id
+        s.variety_id = variety_id or len(cls.variety)
         s.unit_area, s.C_init = cls.variety[variety_id - 1]
         s.amount = amount
         return s
@@ -660,7 +667,7 @@ class FE(AbsAsset):
 
     def __new__(cls, variety_id: int) -> FE:
         s = AbsAsset.__new__(cls)
-        s.variety_id = variety_id
+        s.variety_id = variety_id or len(cls.variety)
         s.P_max, s.C_init = cls.variety[variety_id - 1]
         return s
 
@@ -673,7 +680,7 @@ class RB(AbsAsset):
 
     def __new__(cls, variety_id: int, amount: int) -> RB:
         s = AbsAsset.__new__(cls)
-        s.variety_id = variety_id
+        s.variety_id = variety_id or len(cls.variety)
         *_, s.unit_Cap, s.C_init = cls.variety[variety_id - 1]
         s.amount = amount
         return s
@@ -694,7 +701,7 @@ class EVC(AbsAsset):
 
     def __new__(cls, variety_id: int) -> EVC:
         s = AbsAsset.__new__(cls)
-        s.variety_id = variety_id
+        s.variety_id = variety_id or len(cls.variety)
         s.P_in, s.P_out, s.C_init = cls.variety[variety_id - 1]
         return s
 
@@ -713,11 +720,11 @@ class Vehicle(AbsAsset):
 
     def __new__(cls, variety_id: int, v: Vertex, chg: int) -> Vehicle:
         s = AbsAsset.__new__(cls)
-        s.variety_id = variety_id
+        s.variety_id = variety_id or len(cls.variety)
         (
             s.Cap_charge, s.Cap_order,
             s.P_charge, s.P_discharge, s.C_init, s.Delta_move
-        ) = cls.variety[variety_id]
+        ) = cls.variety[variety_id - 1]
         
         s.vertex, s.Chg_init = v, chg
         return s
@@ -1021,7 +1028,8 @@ def io_1(*query: Any):
 
 
 def io_2(
-    answer: Answer, *, command: str, day: Day=Day(0), opt: int
+    answer: Answer, *,
+    command: Literal["test", "submit"], day: Day=Day(0), opt: int
 ) -> tuple[float, float, float] | None:
     IO.print(answer)
     
