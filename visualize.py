@@ -27,11 +27,6 @@ def main(
     cheappoints = np.array([v.pos._value for v in graph.vertices if v.cost_per_area <= 10 and v.area > 100])
     # plt.scatter(*cheappoints.T, c="purple", zorder=3, s=7)
 
-    clusters = graph.k_means(10)
-    for cluster in clusters:
-        arr = np.array([v.pos._value for v in cluster._value])
-        plt.scatter(*arr.T, zorder=2, s=3)
-
     plt.show()
 
     io_2(Answer(), command="submit", opt=0)
