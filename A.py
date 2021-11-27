@@ -1,16 +1,18 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from functools import cached_property
 from itertools import product
-from numbers import Integral
 from statistics import mean
 from time import time
-from typing import (Any, Callable, ClassVar, Iterator, List, Literal,
-                    NamedTuple, Tuple, Union, cast, overload)
+from typing import (Any, Callable, ClassVar, Iterable, Iterator, List, Literal,
+                    NamedTuple, Tuple, Union, overload)
 
 import networkx as nx
 import numpy as np
-
+from numpy. linalg import linalg
+import scipy.cluster.vq as vq
+import sklearn.cluster as skclu
 
 
 
@@ -74,11 +76,17 @@ class IO:
 
 
 class InstanceCacheMixIn:
-    instances: ClassVar[defaultdict[type, dict[Any, InstanceCacheMixIn]]] = defaultdict(dict)
+    instances: ClassVar[defaultdict[
+        type,
+        dict[
+            Any,
+            InstanceCacheMixIn
+        ]
+    ]] = defaultdict(dict)
     def __new__(cls: type[InstanceCacheMixIn], *key: Any) -> InstanceCacheMixIn:
         value = cls.instances[cls].setdefault(
             key,
-            super(InstanceCacheMixIn, cls).__new__(cls, *key)
+            super().__new__(cls)
         )
         return value
 
@@ -161,6 +169,13 @@ def range_1idx(length: int) -> range:
 
 
 ## Classes
+# parameters
+class Parameter:
+    max_nanogrids = 30
+    timelimit_get_N_cluster = 30.
+
+
+
 # Budget, Temporal infomation
 class Circumstances:
     def __init__(self, binfo: int, tinfo: list[int]) -> None:
@@ -196,35 +211,18 @@ class Circumstances:
             yield Step(i)
 
 
-class AbstractTime(Integral, InstanceCacheMixIn):
+class AbstractTime(InstanceCacheMixIn):
     _value: int
     def __new__(cls, i: int):
-        ins = cast(cls, super().__new__(cls))
-        ins._value = i
-        return ins
+        return super().__new__(cls, i)
+    def __init__(self, i: int) -> None:
+        self._value = i
     def __int__(self) -> int: return self._value
-    def __pow__(self, other: Any, modulo: Any): ...
-    def __rpow__(self, other: Any): ...
-    def __lshift__(self, other: Any): ...
-    def __rlshift__(self, other: Any): ...
-    def __rshift__(self, other: Any): ...
-    def __rrshift__(self, other: Any): ...
-    def __and__(self, other: Any): ...
-    def __rand__(self, other: Any): ...
-    def __xor__(self, other: Any): ...
-    def __rxor__(self, other: Any): ...
-    def __or__(self, other: Any): ...
-    def __ror__(self, other: Any): ...
     def __abs__(self) -> AbstractTime: return self
-    def __invert__(self): ...
     def __trunc__(self) -> int: return self._value
     def __floor__(self) -> int: return self._value
     def __ceil__(self) -> int:  return self._value
     def __round__(self, ndigits: Any) -> int: return self._value
-    def __floordiv__(self, other: Any) -> int: ...
-    def __rfloordiv__(self, other: Any) -> int: ...
-    def __mod__(self, other: Any): ...
-    def __rmod__(self, other: Any): ...
     def __lt__(self, other: AbstractTime) -> bool:
         return self._value < other._value
     def __le__(self, other: AbstractTime) -> bool:
@@ -243,17 +241,28 @@ class AbstractTime(Integral, InstanceCacheMixIn):
     def __add__(self, other: AbstractTime) -> AbstractTime: ...
     def __add__(self, other: int | AbstractTime):
         if isinstance(other, AbstractTime):
-            return cast(type(self), self._value + other._value)
+            return type(self)(self._value + other._value)
         else:
             return self._value + other
     def __radd__(self, other: AbstractTime) -> AbstractTime:
-        return cast(type(self), self._value + other._value)
+        return type(self)(self._value + other._value)
+    @overload
+    def __sub__(self, other: int) -> int: ...
+    @overload
+    def __sub__(self, other: AbstractTime) -> AbstractTime: ...
+    def __sub__(self, other: int | AbstractTime):
+        if isinstance(other, AbstractTime):
+            return type(self)(self._value - other._value)
+        else:
+            return self._value - other
+    def __rsub__(self, other: AbstractTime) -> AbstractTime:
+        return type(self)(other._value - self._value)
     def __neg__(self): ...
     def __pos__(self): ...
     def __mul__(self, other: int) -> AbstractTime:
-        return cast(type(self), self._value * other)
+        return type(self)(self._value * other)
     def __rmul__(self, other: int) -> AbstractTime:
-        return cast(type(self), self._value * other)
+        return type(self)(other * self._value)
     def __truediv__(self, other: Any): ...
     def __rtruediv__(self, other: Any): ...
     def __hash__(self) -> int: return hash(self._value)
@@ -337,6 +346,16 @@ class ScoreCalculator:
         return score
 
 
+    def eval_test(self, scores: tuple[float, float, float], cost: int) -> float:
+        daily_score = self.w_trans * scores[0]\
+            + self.w_ele * scores[1]\
+            + self.w_env * scores[2]
+        cost_score = self.alpha_cost\
+            * max(0, cost - self.circumstances.budget)\
+            / self.circumstances.number_of_days
+        return daily_score - cost_score
+
+
 
 # Graph Classes
 class Position:
@@ -348,7 +367,7 @@ class Position:
 
     @staticmethod
     def euclidean(p0: Position, p1: Position) -> float:
-        return np.linalg.norm(p0._value - p1._value)
+        return linalg.norm(p0._value - p1._value)
 
 
 class Graph:
@@ -356,6 +375,8 @@ class Graph:
         self.e: int; self.v: int
         vinfo: list[list[int]]; einfo: list[list[int]]
         ((self.v, self.e), vinfo, einfo) = veinfo
+        *xy, p, _, _ = zip(*vinfo)
+        self._xy = np.array(xy).T; self._p = np.array(p)
 
         self._value: nx.Graph[Vertex] = nx.Graph()
         self.vertices = vs = [
@@ -369,7 +390,9 @@ class Graph:
         self._value.add_nodes_from(vs)
         self._value.add_weighted_edges_from(es)
 
-        self.scale = max(Position.euclidean(e.u.pos, e.v.pos)/e.weight for e in es)
+    @cached_property
+    def scale(self) -> float:
+        return max(Position.euclidean(e.u.pos, e.v.pos)/e.weight for e in self.edges)
 
     def getvertex(self, i: int) -> Vertex:
         return self.vertices[i - 1]
@@ -382,6 +405,17 @@ class Graph:
             return self.scale * Position.euclidean(a.pos, b.pos)
         value: int = nx.astar_path_length(self._value, u, v, euclidean)
         return value
+
+    def k_means(self, n: int) -> list[Cluster]:
+        kmeans = skclu.MiniBatchKMeans(n, batch_size=256)
+        labels: np.ndarray = kmeans.fit_predict(self._xy, None, self._p)
+        clusters = [Cluster(set()) for _ in range(n)]
+        for v, label in zip(self._value, labels):
+            clusters[label].add_vertex(v)
+        centers = kmeans.cluster_centers_
+        for clu, c in zip(clusters, centers):
+            clu.center_of_mass = c
+        return clusters
 
 
 class Edge(NamedTuple):
@@ -399,6 +433,29 @@ class Vertex(NamedTuple):
 
     def __str__(self) -> str:
         return str(self.id)
+
+
+class Cluster:
+    center_of_mass: np.ndarray
+
+    def __init__(self, vertices: set[Vertex]) -> None:
+        self._value = vertices
+    
+    def add_vertex(self, v: Vertex) -> None:
+        self._value.add(v)
+    
+    def get_center(self) -> Vertex:
+        return self.get_coarse_center()
+
+    def get_coarse_center(self) -> Vertex:
+        value = min([v for v in self._value], key=self.euclidean_from_center)
+        return value
+
+    def euclidean_from_center(self, v: Vertex) -> float:
+        return linalg.norm(v.pos._value - self.center_of_mass)
+
+    def __contains__(self, v: Vertex) -> bool:
+        return v in self._value
 
 
 
@@ -448,13 +505,12 @@ class Demands:
         raise KeyError
 
     def __setitem__(self, key: tuple[Day, int], value: Demand) -> None:
-        day: Day; n: int
         day, n = key
         self._value[day - 1][n - 1] = value
 
-    @property
+    @cached_property
     def vertices(self) -> list[Vertex]:
-        return [d.vertex for d in self._value[Day(0)]]
+        return [d.vertex for d in self._value[0]]
 
 
 class Demand:
@@ -497,7 +553,7 @@ class Demand:
             self.daily_demands
         ) = info
 
-        self.vertex = self.graph.getvertex(x)
+        self.vertex = self.graph.getvertex(x + 1)
 
     def __getitem__(self, key: Interval) -> float:
         d = self.daily_demands[key - 1]
@@ -512,7 +568,7 @@ class Demand:
                f"sigma2: {self.sigma2}, "\
                f"{self.daily_demands})"
 
-    @property
+    @cached_property
     def average(self) -> float:
         return mean(self[i] for i in self.circumstances.intervals())
 
@@ -603,6 +659,10 @@ class Radiation:
         k, e = key
         self._value[e.id - 1][k - 1] = value
         
+
+    def average(self, vertex: Vertex) -> float:
+        return mean(mean(l) for l in self[vertex])
+
 
 
 # Assets Classes
@@ -801,7 +861,7 @@ class Order(NamedTuple):
 
     @property
     def time_spent(self) -> int:
-        return self.arrived - self.ordered
+        return int(self.arrived - self.ordered)
 
 
 
@@ -811,8 +871,8 @@ class Shelters:
         self.circumstances = c
         self.graph = g
         self.N, xp, self.D = info
-        self._value = [Shelter(g.getvertex(x), p) for x, p in xp]
-        self.vertices = [g.getvertex(x) for x, _ in xp]
+        self._value = [Shelter(g.getvertex(x + 1), p) for x, p in xp]
+        self.vertices = [g.getvertex(x + 1) for x, _ in xp]
         self._vtoid = {v:i for v, i in zip(self.vertices, range_1idx(self.N))}
 
     def predicted_demand(self, v: Vertex, i: Interval) -> int:
@@ -1030,15 +1090,20 @@ def io_1(*query: Any):
 def io_2(
     answer: Answer, *,
     command: Literal["test", "submit"], day: Day=Day(0), opt: int
-) -> tuple[float, float, float] | None:
+) -> tuple[float, float, float]:
     IO.print(answer)
     
     IO.print(command, day, opt)
     if   command == "test":
-        c0, c1, c2 = IO.float1d()
-        return (c0, c1, c2)
+        while ExecutionTimer.before(200.)():
+            try:
+                c0, c1, c2 = IO.float1d()
+                return (c0, c1, c2)
+            except EOFError:
+                continue
+        return (0., 0., 0.)
     elif command == "submit":
-        return None
+        return (0., 0., 0.)
     else:
         raise ValueError('argument "command" must be "test" or "submit"')
 
