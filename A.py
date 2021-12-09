@@ -4,15 +4,17 @@ from collections import defaultdict
 from functools import cached_property
 from itertools import product
 from statistics import mean
+import sys
 from time import time
-from typing import (Any, Callable, ClassVar, Iterable, Iterator, List, Literal,
-                    NamedTuple, Tuple, Union, overload)
+from typing import (Any, Callable, ClassVar, Generic, Iterator, List, Literal,
+                    NamedTuple, Protocol, Tuple, TypeVar, Union, overload)
 
 import networkx as nx
 import numpy as np
-from numpy. linalg import linalg
-import scipy.cluster.vq as vq
+from numpy.linalg import linalg
+from scipy.stats import stats
 import sklearn.cluster as skclu
+
 
 
 
@@ -149,16 +151,103 @@ class FibonacciSearch:
     def from_infimum(
         cls,
         func: Callable[[int], Real],
-        x_0: int=0, x_1: int=1, x_3: int=2
+        x_0: int=0, x_1: int=1, x_3: int=3
     ) -> FibonacciSearch:
         y_1, y_3 = func(x_1), func(x_3)
         while y_1 < y_3:
             x_0, x_1, x_3 = x_1, x_3, 2*x_3 - x_0
             y_1, y_3 = y_3, func(x_3)
-        x_2 = x_3 + x_1 - x_0
+        x_2 = x_3 - x_1 + x_0
         value = cls(func, x_0, x_1, x_2, x_3)
         value.y_1 = y_1
         return value
+
+
+
+class LinearRegression:
+    _value: NamedTuple | None = None
+
+    def __init__(self, default: float=0.) -> None:
+        self._x = np.array([])
+        self._y = np.array([])
+        self.default = default
+    
+    def success(self, x: float, y: float) -> None:
+        np.append(self._x, x)
+        np.append(self._y, y)
+        self._value = None
+
+    def predict(self, x: float) -> float:
+        y: float; l = len(self._x)
+        if   l == 0:
+            y = self.default
+        elif l == 1:
+            y = self._y[0]
+        else:
+            self._value = self._value or stats.linregress(self._x, self._y)
+            slope, intercept, _, _, _ = self._value
+            y = slope * x + intercept
+        return y
+
+
+
+class LinuxMemory:
+    PAGESIZE: int
+    if sys.platform == "linux":
+        from resource import getpagesize
+        PAGESIZE = getpagesize()
+    else:
+        PAGESIZE = 4096
+
+    @classmethod
+    def getMemAvailable(cls) -> int:
+        mems: dict[bytes, int] = {}
+        with open("/proc/meminfo", "rb") as f:
+            for line in f:
+                fields = line.split()
+                mems[fields[0]] = int(fields[1]) * 1024
+
+        if b"MemAvailable:" in mems:
+            return mems[b"MemAvailable:"]
+
+        watermark_low = LinuxMemory.PAGESIZE * sum(
+            int(v // 1024)
+            for k, v in mems.items()
+            if k.startswith(b"low")
+        )
+
+        avail = mems[b"MemFree:"] - watermark_low
+        avail += (pagecache := mems[b"Active(file):"] + mems[b"Inactive(file):"])\
+            - min(pagecache / 2, watermark_low)
+        avail += (reclaimable := mems[b"SReclaimable:"])\
+            - min(reclaimable / 2, watermark_low)
+        return int(avail)
+
+
+
+class Comparable(Protocol):
+    def __lt__(self, other: Any) -> bool: ...
+    def __gt__(self, other: Any) -> bool: ...
+
+
+
+_CT = TypeVar("_CT", bound=Comparable)
+class Extremizer(Generic[_CT]):
+    def __init__(self, initial: _CT) -> None:
+        self.extremum = initial
+    
+    def __le__(self, other: _CT) -> bool:
+        if self.extremum < other:
+            self.extremum = other
+            return True
+        return False
+
+    def __ge__(self, other: _CT) -> bool:
+        if self.extremum > other:
+            self.extremum = other
+            return True
+        return False
+
 
 
 
@@ -171,8 +260,7 @@ def range_1idx(length: int) -> range:
 ## Classes
 # parameters
 class Parameter:
-    max_nanogrids = 30
-    timelimit_get_N_cluster = 30.
+    memory_margin = 400_000_000
 
 
 
@@ -553,7 +641,7 @@ class Demand:
             self.daily_demands
         ) = info
 
-        self.vertex = self.graph.getvertex(x + 1)
+        self.vertex = self.graph.getvertex(x)
 
     def __getitem__(self, key: Interval) -> float:
         d = self.daily_demands[key - 1]
@@ -871,8 +959,8 @@ class Shelters:
         self.circumstances = c
         self.graph = g
         self.N, xp, self.D = info
-        self._value = [Shelter(g.getvertex(x + 1), p) for x, p in xp]
-        self.vertices = [g.getvertex(x + 1) for x, _ in xp]
+        self._value = [Shelter(g.getvertex(x), p) for x, p in xp]
+        self.vertices = [g.getvertex(x) for x, _ in xp]
         self._vtoid = {v:i for v, i in zip(self.vertices, range_1idx(self.N))}
 
     def predicted_demand(self, v: Vertex, i: Interval) -> int:
@@ -1089,7 +1177,8 @@ def io_1(*query: Any):
 
 def io_2(
     answer: Answer, *,
-    command: Literal["test", "submit"], day: Day=Day(0), opt: int
+    command: Literal["test", "submit"], day: Day=Day(0), opt: int=0,
+    extremizer: Extremizer | None=None
 ) -> tuple[float, float, float]:
     IO.print(answer)
     
@@ -1097,6 +1186,8 @@ def io_2(
     if   command == "test":
         while ExecutionTimer.before(200.)():
             try:
+                if extremizer is not None:
+                    extremizer >= LinuxMemory.getMemAvailable()
                 c0, c1, c2 = IO.float1d()
                 return (c0, c1, c2)
             except EOFError:
